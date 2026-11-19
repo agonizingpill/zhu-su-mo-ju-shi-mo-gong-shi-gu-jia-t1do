@@ -49,6 +49,9 @@ def issue(s,p,u):
     if s.scalar(select(TrialMaterial.id).where(TrialMaterial.execution_id==x.id,TrialMaterial.lot_id==p.lot_id)):raise HTTPException(409,'该试模已领此批材料，不可重复领料')
     lot=locked(s,ResinLot,p.lot_id)
     if lot.state!='available':raise HTTPException(409,'树脂批次已隔离，不能领料')
+    from .substitute_models import SubstituteTrial
+    if s.scalar(select(SubstituteTrial.id).where(SubstituteTrial.estimate_id==x.estimate_id,SubstituteTrial.substitute_grade==lot.grade)):
+        raise HTTPException(409,'该牌号已纳入替代试用管理，请从替代树脂试用页领料；撤销后未领额度也不再发放，须另立试用')
     if p.issued_kg>lot.available_kg:raise HTTPException(409,'树脂可用库存不足，领料未扣减')
     lot.available_kg-=p.issued_kg;m=TrialMaterial(execution_id=x.id,lot_id=lot.id,issued_kg=p.issued_kg,returned_kg=0,unit_price_snapshot=lot.unit_price,state='issued');s.add(m);s.flush();record(s,u,'试模领料 '+x.snapshot['estimate_code']);return view(s,m)
 def return_material(s,id,p,u):

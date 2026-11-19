@@ -16,6 +16,7 @@
 
 - 模具保养停机：计划→主管批准→保养完检；批准窗口同模具不得重叠。新开工核对停机时间、同模已有running实绩，批准停机也检查未完工试模，避免冲突。已完检保留停机历史，过去已签结数据不改。
 - 试模材料领耗：主管树脂批次入库，树脂状态available/quarantine；运行实绩按批次一次领料，锁库存，冻结单价；完工且未建结算可一次退余料，最多退领量。净耗成本=Σ((领kg−退kg)×单价快照)。所有新结算按台账取成本，拒绝任意覆盖；结算建立后领退料冻结。已signed历史数值保持，不补写旧凭据。
+- 替代树脂限量试用：原料缺货时登记基准牌号与替代牌号，用已签结且整笔只领一个牌号的实绩，按模具与机台加性校正良率差，给出 95% 降幅区间（下限~上限）。可比样本不足 3 条、或缺同模具/同机台样本，或区间上限超过主管容差，一律暂缓、不得批额度。领料实绩机台须与评估机台一致；该替代牌号只能从试用页领料，不能绕过额度走普通材料页。主管设容差并按估单与替代牌号批公斤额度。领料在一个事务里同时扣库存与额度，请求带幂等键，失败重试不重复扣；撤销与领料以行锁先后为准，撤销生效后领不到料，已领料照常退库结算，退料不恢复额度。页面列待评、可批准、已撤销与剩余额度。
 - 客户交付验收：只从signed结算交样，样件数≤实绩good_shots；发样→客户签收→接受或整改→主管关闭。整改必须绑定原完工之后新一次同模具signed实绩，旧实绩或其他模具不能替代；重复签收/关闭拒绝。这里只留本地交接和客户意见，不发送外部消息。
 
 ## 快速启动
@@ -51,6 +52,8 @@ JWT 8 小时过期，密码 PBKDF2-SHA256 盐化存储。演示账号只用于�
 9. 次日08:00，在「试模实绩采集」选择已承诺 `QE-FLOOR-DEMO` 开工，快照为10h、300元/h、报价5000元。此单是演示用已承诺预算，seed首次建立时为M450预留10h；不冒充模型推理结果。
 10. 17:00填写良品94/总射次100，实际9h；结算填材料成本500元，后端计算成本3200元、毛利1800元、工时偏差-10%，负责人签结后两个实体冻结。若超时到次日08:00，则须负责人确认超时原因；异常偏差或负毛利结算另需复核说明。
 
+V4：V3材料脚本之后，10:30登记 `QE-FLOOR-DEMO` 的替代树脂试用（下限~上限约 1.78~4.22pp；seed 另备 `RS-ALT-DEMO` 与 8 条示范已签结单牌号实绩），评估显示良率降幅区间；主管设 5pp 容差并批 30kg。运行实绩领料时库存与额度同步扣减，同一请求凭据重试不重复扣；若主管撤销则未领部分立即停发，已领部分仍可完工退料、按净耗结算，退料不回补额度。
+
 V3：09:00 MD-115计划11月25日08:00—12:00顶针润滑与滑块检查，主管批准，完检记回位/模面结果；任何新开工不能回填到该窗口。10:00 RS-P20-DEMO树脂单价20元/kg，为运行试模领30kg；完工退5kg，库存净减25kg、净耗500元，结算材料成本只读500元。11:00签结后交10件样件给华远质量部，记录签收与验收；若卡扣装配需整改，必须再建同模新估单、承诺、开工完工、净耗结算signed后才能绑定关闭。
 
 ## 算法口径与限制
@@ -74,13 +77,15 @@ V3范围：保养时间和客户签收可按演示日期录入，无设备时钟
 
 V3 `backend/src/workshop_models.py`定义MaintenanceWindow、ResinLot、TrialMaterial、ReviewMaterialLedger、TrialDelivery；`workshop_schemas.py`校验时间、kg、客户记录，`workshop_service.py`负责停机/领耗/交付规则，`workshop_routes.py`提供`/maintenance-windows`、`/resin-lots`、`/trial-materials`、`/trial-deliveries`。原表列无新增，create_all非破坏性增加5张表；新结算另存材料快照凭据，不改旧signed记录。
 
+V4 `backend/src/substitute_models.py` 定义SubstitutePolicy、SubstituteTrial、SubstituteIssue，`substitute_schemas.py` 校验容差、额度、幂等键，`substitute_service.py` 负责样本筛选、加性校正拟合、区间与暂缓判定、批量领料事务，`substitute_routes.py` 暴露 `/substitute-policy`、`/substitute-trials` 及 evaluate/approve/revoke/issue 动作。
+
 `backend/src/execution_models.py` 定义实绩/结算外键与唯一约束，`execution_schemas.py` 校验输入，`execution_service.py` 管理快照、工时与成本事务，`execution_routes.py` 暴露 `/executions`、`/cost-reviews` 及 finish/sign 操作。
 
-`frontend/src/pages/` 的 moulds/estimates/evidence/schedule/executions/reviews 及 maintenance/materials/deliveries 是九页；`api.js` HTTP；`store.js` 业务状态；`components/common.js` 状态标签/证据条/选择器跨页复用；`utils/format.js` 转义、金额/数字和表单工具。
+`frontend/src/pages/` 的 moulds/estimates/evidence/schedule/executions/reviews、maintenance/materials/deliveries 及 substitutes 是十页；`api.js` HTTP；`store.js` 业务状态；`components/common.js` 状态标签/证据条/选择器跨页复用；`utils/format.js` 转义、金额/数字和表单工具。
 
 本地 `pip install -r backend/requirements.txt`，设置 DATABASE_URL/REDIS_URL，在backend目录 `uvicorn src.main:app --reload`，另一终端 `python -m src.worker`。前端建议使用Compose Nginx代理。
 
-枚举位置：角色、估价状态、实绩状态、结算、保养、树脂、领料、交付状态与钢材定义在 `backend/src/constants.py` 和 `frontend/src/constants.js`；`GET /enums` 返回上述九组。钢材输入Literal在schemas.py、模型编码在ml.py。后端权限为真实约束，前端禁用按钮作提示。IntegrityError转成可恢复409。
+枚举位置：角色、估价状态、实绩状态、结算、保养、树脂、领料、交付、替代状态与钢材定义在 `backend/src/constants.py` 和 `frontend/src/constants.js`；`GET /enums` 返回上述十组。钢材输入Literal在schemas.py、模型编码在ml.py。后端权限为真实约束，前端禁用按钮作提示。IntegrityError转成可恢复409。
 
 环境变量见 `.env.example`：COMPOSE_PROJECT_NAME、FRONTEND_PORT、BACKEND_PORT、DB_PORT、JWT_SECRET、SEED_DEMO。`COMPOSE_SUBNET=10.221.23.0/24` 是本机默认地址池已满后的专用网段；冲突时改空闲网段。数据库、Redis、计算产物为命名卷。
 

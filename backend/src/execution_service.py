@@ -2,7 +2,7 @@ from datetime import datetime,timezone
 from zoneinfo import ZoneInfo
 from fastapi import HTTPException
 from sqlalchemy import select
-from .models import Estimate,Mould
+from .models import Estimate,Mould,MachineSlot
 from .execution_models import TrialExecution,CostReview
 from .services import item,serialize,record
 from .workshop_service import trial_ready,material_cost,freeze_material_cost
@@ -24,8 +24,8 @@ def begin(s,data,u):
     if e.status!='committed' or not e.predicted_hours or not e.slot_id:raise HTTPException(409,'仅已承诺机时的估单可开工')
     if s.scalar(select(TrialExecution.id).where(TrialExecution.estimate_id==e.id)):raise HTTPException(409,'该估单已经开工，不可重复建立实绩')
     trial_ready(s,e,stamp(data.started_at))
-    m=item(s,Mould,e.mould_id)
-    x=TrialExecution(estimate_id=e.id,started_at=stamp(data.started_at).isoformat(),snapshot={'estimate_code':e.code,'predicted_hours':e.predicted_hours,'quoted_amount':e.quote_amount,'rate':e.rate,'mould_code':m.code,'slot_id':e.slot_id},status='running')
+    m=item(s,Mould,e.mould_id);slot=item(s,MachineSlot,e.slot_id)
+    x=TrialExecution(estimate_id=e.id,started_at=stamp(data.started_at).isoformat(),snapshot={'estimate_code':e.code,'predicted_hours':e.predicted_hours,'quoted_amount':e.quote_amount,'rate':e.rate,'mould_code':m.code,'slot_id':e.slot_id,'machine':slot.machine},status='running')
     s.add(x);record(s,u,'试模开工 '+e.code);s.flush();return x
 def finish(s,eid,data,u):
     x=s.query(TrialExecution).filter_by(id=eid).with_for_update().one_or_none()

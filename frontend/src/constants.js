@@ -8,4 +8,5 @@ export const REVIEW_STATES={draft:'待主管复核',signed:'主管已签结'};
 export const MAINTENANCE_STATES={planned:'待批准保养',approved:'停机已批准',completed:'保养已完检'};
 export const RESIN_STATES={available:'批次可用',quarantine:'批次隔离'};
 export const MATERIAL_STATES={issued:'已领料',returned:'已登记退料'};
+export const SUBSTITUTE_STATES={pending:'待评估',eligible:'容差内待批额度',held:'暂缓（缺样本或超容差）',approved:'已批额度',revoked:'已撤销'};
 export const DELIVERY_STATES={dispatched:'已发样待签收',received:'客户已签收',accepted:'客户接受',rectification:'需整改重试',closed:'主管已关闭'};
